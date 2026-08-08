@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Maison Maudite 3D</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:#000;overflow:hidden;font-family:monospace;}
+#c{display:block;width:100vw;height:100vh;cursor:crosshair;}
+#stats{position:fixed;top:14px;left:14px;color:#aaa;font-size:13px;line-height:2;text-shadow:0 0 8px #000;z-index:11;pointer-events:none;}
+.bar-bg{display:inline-block;width:100px;height:8px;background:#222;vertical-align:middle;border-radius:4px;overflow:hidden;}
+.bar-fill{height:100%;border-radius:4px;transition:width .5s;}
+#label{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);color:#ccc;font-size:14px;background:rgba(0,0,0,.7);padding:6px 16px;border-radius:20px;border:1px solid #444;opacity:0;transition:opacity .3s;z-index:11;pointer-events:none;white-space:nowrap;}
+#crosshair{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);color:rgba(255,255,255,.4);font-size:22px;z-index:11;pointer-events:none;}
+#blood{position:fixed;inset:0;pointer-events:none;z-index:9;box-shadow:inset 0 0 0 rgba(130,0,0,0);transition:box-shadow 1s;}
+#vignette{position:fixed;inset:0;pointer-events:none;z-index:8;background:radial-gradient(ellipse at center,transparent 50%,rgba(0,0,0,.8) 100%);}
+#flashback{position:fixed;inset:0;background:#000;display:flex;align-items:center;justify-content:center;color:#b00;font-size:20px;text-align:center;padding:50px;opacity:0;pointer-events:none;z-index:20;transition:opacity .5s;font-family:Georgia,serif;line-height:1.8;white-space:pre-line;}
+#overlay{position:fixed;inset:0;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#aaa;z-index:30;text-align:center;padding:40px;gap:12px;}
+#overlay h1{color:#c00;font-size:30px;letter-spacing:4px;margin-bottom:6px;}
+#overlay p{max-width:420px;line-height:1.8;font-size:14px;}
+#overlay small{color:#555;font-size:12px;}
+#overlay button{margin-top:14px;padding:11px 30px;background:transparent;border:1px solid #c00;color:#c00;font-family:monospace;font-size:15px;cursor:pointer;letter-spacing:2px;transition:all .2s;}
+#overlay button:hover{background:#c00;color:#000;}
+#inventory{position:fixed;bottom:28px;left:14px;color:#777;font-size:12px;z-index:11;pointer-events:none;line-height:2;}
+#minimap{position:fixed;top:14px;right:14px;width:110px;height:90px;z-index:11;pointer-events:none;}
+#endscreen{position:fixed;inset:0;background:#000;display:none;flex-direction:column;align-items:center;justify-content:center;color:#aaa;z-index:40;text-align:center;padding:40px;gap:16px;}
+#endscreen h1{font-size:28px;}
+#endscreen p{max-width:440px;line-height:1.8;font-size:15px;}
+#endscreen button{margin-top:10px;padding:10px 28px;background:transparent;border:1px solid #555;color:#aaa;font-family:monospace;font-size:14px;cursor:pointer;}
+#endscreen button:hover{background:#222;}
+#roomname{position:fixed;top:14px;left:50%;transform:translateX(-50%);color:#666;font-size:12px;letter-spacing:2px;z-index:11;pointer-events:none;}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="vignette"></div>
+<div id="blood"></div>
+<div id="stats">
+  <div>Sanité&nbsp;<span class="bar-bg"><span id="sanity-bar" class="bar-fill" style="width:100%;background:#4a9;"></span></span>&nbsp;<span id="sanity-val">100</span></div>
+  <div>Lampe&nbsp;&nbsp;<span class="bar-bg"><span id="lamp-bar" class="bar-fill" style="width:100%;background:#aa6;"></span></span></div>
+</div>
+<div id="roomname">ENTRÉE</div>
+<div id="inventory"></div>
+<div id="crosshair">＋</div>
+<div id="label"></div>
+<canvas id="minimap"></canvas>
+<div id="flashback"></div>
+<div id="overlay">
+  <h1>MAISON MAUDITE</h1>
+  <p>Explorez les 5 pièces, trouvez la <b>photo</b> et la <b>clé</b>, fuyez avant de perdre la raison.</p>
+  <small>ZQSD/WASD — déplacer &nbsp;|&nbsp; Souris — regarder &nbsp;|&nbsp; E — interagir &nbsp;|&nbsp; F — lampe</small>
+  <button onclick="startGame()">ENTRER</button>
+</div>
+<div id="endscreen">
+  <h1 id="end-title"></h1>
+  <p id="end-desc"></p>
+  <button onclick="location.reload()">Recommencer</button>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+let scene,camera,renderer,clock;
+let sanity=100,lampPower=100,lampOn=true;
+let keys={},yaw=0,pitch=0;
+let interactables=[],doorList=[],inventory=[];
+let lampLight,particles,gameStarted=false;
+let flashbackShown={},labelTimer=0;
+let audioCtx,ambienceNode,heartNode,heartGain;
+let currentRoomName='ENTRÉE';
+
+// ---- WEB AUDIO ----
+function initAudio(){
+  audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+  playAmbience();
+  startHeartbeat();
+  playCreak();
+}
+
+function playAmbience(){
+  // Low drone — dark hum
+  const osc1=audioCtx.createOscillator();
+  const osc2=audioCtx.createOscillator();
+  const gain=audioCtx.createGain();
+  const filter=audioCtx.createBiquadFilter();
+  osc1.type='sawtooth'; osc1.frequency.value=40;
+  osc2.type='sawtooth'; osc2.frequency.value=41.2;
+  filter.type='lowpass'; filter.frequency.value=200;
+  gain.gain.value=0.06;
+  osc1.connect(filter); osc2.connect(filter);
+  filter.connect(gain); gain.connect(audioCtx.destination);
+  osc1.start(); osc2.start();
+  ambienceNode=gain;
+
+  // Wind noise
+  const bufSize=audioCtx.sampleRate*2;
+  const buf=audioCtx.createBuffer(1,bufSize,audioCtx.sampleRate);
+  const data=buf.getChannelData(0);
+  for(let i=0;i<bufSize;i++) data[i]=(Math.random()*2-1)*0.015;
+  const src=audioCtx.createBufferSource();
+  src.buffer=buf; src.loop=true;
+  const wf=audioCtx.createBiquadFilter();
+  wf.type='bandpass'; wf.frequency.value=300; wf.Q.value=0.5;
+  const wg=audioCtx.createGain(); wg.gain.value=0.4;
+  src.connect(wf); wf.connect(wg); wg.connect(audioCtx.destination);
+  src.start();
+}
+
+function startHeartbeat(){
+  heartGain=audioCtx.createGain();
+  heartGain.gain.value=0;
+  heartGain.connect(audioCtx.destination);
+  function beat(){
+    if(!audioCtx) return;
+    const t=audioCtx.currentTime;
+    const osc=audioCtx.createOscillator();
+    const g=audioCtx.createGain();
+    osc.type='sine'; osc.frequency.value=60;
+    g.gain.setValueAtTime(0,t);
+    g.gain.linearRampToValueAtTime(0.5,t+0.05);
+    g.gain.exponentialRampToValueAtTime(0.001,t+0.3);
+    osc.connect(g); g.connect(heartGain);
+    osc.start(t); osc.stop(t+0.35);
+    const bpm=40+((100-sanity)/100)*80;
+    setTimeout(beat,60000/bpm);
+  }
+  beat();
+}
+
+function playCreak(){
+  if(!audioCtx) return;
+  const t=audioCtx.currentTime;
+  const osc=audioCtx.createOscillator();
+  const g=audioCtx.createGain();
+  osc.type='sawtooth';
+  osc.frequency.setValueAtTime(180,t);
+  osc.frequency.exponentialRampToValueAtTime(80,t+0.4);
+  g.gain.setValueAtTime(0,t);
+  g.gain.linearRampToValueAtTime(0.08,t+0.05);
+  g.gain.exponentialRampToValueAtTime(0.001,t+0.5);
+  osc.connect(g); g.connect(audioCtx.destination);
+  osc.start(t); osc.stop(t+0.6);
+  setTimeout(playCreak, 8000+Math.random()*14000);
+}
+
+function playJump(){
+  if(!audioCtx) return;
+  const t=audioCtx.currentTime;
+  // white noise burst
+  const buf=audioCtx.createBuffer(1,audioCtx.sampleRate*0.3,audioCtx.sampleRate);
+  const d=buf.getChannelData(0);
+  for(let i=0;i<d.length;i++) d[i]=(Math.random()*2-1);
+  const src=audioCtx.createBufferSource();
+  src.buffer=buf;
+  const g=audioCtx.createGain();
+  g.gain.setValueAtTime(0.4,t);
+  g.gain.exponentialRampToValueAtTime(0.001,t+0.3);
+  const f=audioCtx.createBiquadFilter();
+  f.type='bandpass'; f.frequency.value=800;
+  src.connect(f); f.connect(g); g.connect(audioCtx.destination);
+  src.start(t);
+}
+
+function playStep(){
+  if(!audioCtx) return;
+  const t=audioCtx.currentTime;
+  const osc=audioCtx.createOscillator();
+  const g=audioCtx.createGain();
+  osc.type='sine'; osc.frequency.value=120;
+  g.gain.setValueAtTime(0.12,t);
+  g.gain.exponentialRampToValueAtTime(0.001,t+0.12);
+  osc.connect(g); g.connect(audioCtx.destination);
+  osc.start(t); osc.stop(t+0.15);
+}
+
+function playPickup(){
+  if(!audioCtx) return;
+  const t=audioCtx.currentTime;
+  [440,550,660].forEach((f,i)=>{
+    const osc=audioCtx.createOscillator();
+    const g=audioCtx.createGain();
+    osc.frequency.value=f;
+    g.gain.setValueAtTime(0.08,t+i*0.07);
+    g.gain.exponentialRampToValueAtTime(0.001,t+i*0.07+0.2);
+    osc.connect(g); g.connect(audioCtx.destination);
+    osc.start(t+i*0.07); osc.stop(t+i*0.07+0.25);
+  });
+}
+
+// ---- PROCEDURAL TEXTURES ----
+function makeWallTexture(r,g,b,type){
+  const sz=256;
+  const cv=document.createElement('canvas');
+  cv.width=sz; cv.height=sz;
+  const cx=cv.getContext('2d');
+  cx.fillStyle=`rgb(${r},${g},${b})`;
+  cx.fillRect(0,0,sz,sz);
+
+  if(type==='brick'){
+    cx.strokeStyle=`rgba(0,0,0,0.5)`;
+    cx.lineWidth=2;
+    const bw=64,bh=32;
+    for(let row=0;row<sz/bh+1;row++){
+      const offset=(row%2)*bw/2;
+      for(let col=-1;col<sz/bw+1;col++){
+        const x=col*bw+offset,y=row*bh;
+        cx.strokeRect(x+1,y+1,bw-2,bh-2);
+        // mortar
+        cx.fillStyle=`rgba(0,0,0,0.3)`;
+        cx.fillRect(x,y,bw,2);
+        cx.fillRect(x,y,2,bh);
+        // highlight
+        cx.fillStyle=`rgba(255,255,255,0.04)`;
+        cx.fillRect(x+3,y+3,bw-6,bh-6);
+      }
+    }
+  } else if(type==='plaster'){
+    // noise grain
+    for(let i=0;i<4000;i++){
+      const px2=Math.random()*sz,py2=Math.random()*sz;
+      const v=Math.random()*40-20;
+      cx.fillStyle=`rgba(${v>0?255:0},${v>0?255:0},${v>0?255:0},${Math.abs(v)/200})`;
+      cx.fillRect(px2,py2,2,2);
+    }
+    // cracks
+    cx.strokeStyle='rgba(0,0,0,0.3)'; cx.lineWidth=1;
+    for(let c=0;c<5;c++){
+      cx.beginPath();
+      cx.moveTo(Math.random()*sz,Math.random()*sz);
+      for(let s=0;s<6;s++) cx.lineTo(Math.random()*sz,Math.random()*sz);
+      cx.stroke();
+    }
+  } else if(type==='wood'){
+    for(let i=0;i<20;i++){
+      cx.fillStyle=`rgba(0,0,0,${0.05+Math.random()*0.1})`;
+      cx.fillRect(0,i*(sz/20),sz,sz/20-1);
+    }
+  } else if(type==='stone'){
+    for(let i=0;i<800;i++){
+      const px2=Math.random()*sz,py2=Math.random()*sz,rad=1+Math.random()*3;
+      cx.fillStyle=`rgba(0,0,0,${Math.random()*0.3})`;
+      cx.beginPath(); cx.arc(px2,py2,rad,0,Math.PI*2); cx.fill();
+    }
+  }
+
+  const tex=new THREE.CanvasTexture(cv);
+  tex.wrapS=tex.wrapT=THREE.RepeatWrapping;
+  tex.repeat.set(2,1);
+  return tex;
+}
+
+function makeFloorTexture(r,g,b){
+  const sz=256;
+  const cv=document.createElement('canvas');
+  cv.width=sz; cv.height=sz;
+  const cx=cv.getContext('2d');
+  cx.fillStyle=`rgb(${r},${g},${b})`;
+  cx.fillRect(0,0,sz,sz);
+  // tiles
+  const ts=64;
+  for(let row=0;row<sz/ts;row++){
+    for(let col=0;col<sz/ts;col++){
+      cx.strokeStyle='rgba(0,0,0,0.6)';
+      cx.lineWidth=3;
+      cx.strokeRect(col*ts+1,row*ts+1,ts-2,ts-2);
+      // dirt spots
+      for(let i=0;i<8;i++){
+        cx.fillStyle=`rgba(0,0,0,${Math.random()*0.15})`;
+        cx.beginPath();
+        cx.arc(col*ts+Math.random()*ts,row*ts+Math.random()*ts,1+Math.random()*4,0,Math.PI*2);
+        cx.fill();
+      }
+    }
+  }
+  const tex=new THREE.CanvasTexture(cv);
+  tex.wrapS=tex.wrapT=THREE.RepeatWrapping;
+  tex.repeat.set(3,3);
+  return tex;
+}
+
+// ---- ROOMS ----
+const ROOMS={
+  hall:    {x:0,  z:0,  w:8, d:8, name:'ENTRÉE',  wtype:'plaster', wr:40,wg:28,wb:18, fr:22,fg:16,fb:10},
+  salon:   {x:14, z:0,  w:10,d:8, name:'SALON',   wtype:'plaster', wr:20,wg:20,wb:45, fr:15,fg:15,fb:28},
+  kitchen: {x:0,  z:14, w:8, d:10,name:'CUISINE', wtype:'brick',   wr:28,wg:42,wb:20, fr:15,fg:22,fb:12},
+  bedroom: {x:14, z:14, w:10,d:10,name:'CHAMBRE', wtype:'wood',    wr:50,wg:18,wb:18, fr:30,fg:12,fb:12},
+  cave:    {x:7,  z:28, w:8, d:8, name:'CAVE',    wtype:'stone',   wr:15,wg:15,wb:15, fr:10,fg:10,fb:10},
+};
+
+const FLASHBACKS={
+  photo:   "Elle sourit dans le jardin…\nC'était avant.\nAvant que la maison commence à respirer.",
+  journal: "12 octobre — les bruits reprennent la nuit.\nQuelque chose gratte sous le plancher.\nJe n'ose plus allumer la lumière.",
+  mirror:  "Le reflet bouge.\nMais pas moi.\nIl sourit. Je ne souris pas.\nPuis les lumières s'éteignent.",
+  clock:   "L'horloge s'est arrêtée à 3h13.\nDepuis, le temps ne compte plus.\nDepuis, ils reviennent.",
+};
+
+function startGame(){
+  document.getElementById('overlay').style.display='none';
+  init();
+  gameStarted=true;
+  requestAnimationFrame(loop);
+}
+
+function init(){
+  scene=new THREE.Scene();
+  scene.fog=new THREE.FogExp2(0x000000,0.055);
+  camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,0.1,80);
+  camera.position.set(0,1.7,0);
+  renderer=new THREE.WebGLRenderer({canvas:document.getElementById('c'),antialias:true});
+  renderer.setSize(innerWidth,innerHeight);
+  renderer.shadowMap.enabled=true;
+  renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+  clock=new THREE.Clock();
+
+  scene.add(new THREE.AmbientLight(0x0a0906,1));
+  lampLight=new THREE.PointLight(0xffcc88,2.8,15);
+  camera.add(lampLight);
+  scene.add(camera);
+
+  buildRooms();
+  buildObjects();
+  buildDoors();
+  buildParticles();
+
+  document.getElementById('c').addEventListener('click',()=>{
+    document.getElementById('c').requestPointerLock();
+    if(!audioCtx) initAudio();
+  });
+  document.addEventListener('mousemove',e=>{
+    if(document.pointerLockElement!==document.getElementById('c')) return;
+    yaw-=e.movementX*0.002;
+    pitch-=e.movementY*0.002;
+    pitch=Math.max(-1.2,Math.min(1.2,pitch));
+    camera.rotation.order='YXZ';
+    camera.rotation.y=yaw;
+    camera.rotation.x=pitch;
+  });
+  document.addEventListener('keydown',e=>{
+    keys[e.code]=true;
+    if(e.code==='KeyF') toggleLamp();
+    if(e.code==='KeyE') interact();
+  });
+  document.addEventListener('keyup',e=>{keys[e.code]=false;});
+  window.addEventListener('resize',()=>{
+    renderer.setSize(innerWidth,innerHeight);
+    camera.aspect=innerWidth/innerHeight;
+    camera.updateProjectionMatrix();
+  });
+}
+
+function buildRooms(){
+  for(const [id,r] of Object.entries(ROOMS)){
+    const wTex=makeWallTexture(r.wr,r.wg,r.wb,r.wtype);
+    const fTex=makeFloorTexture(r.fr,r.fg,r.fb);
+    const cTex=makeWallTexture(8,6,5,'plaster');
+    const wMat=new THREE.MeshLambertMaterial({map:wTex});
+    const fMat=new THREE.MeshLambertMaterial({map:fTex});
+    const cMat=new THREE.MeshLambertMaterial({map:cTex});
+
+    // floor
+    const fl=new THREE.Mesh(new THREE.BoxGeometry(r.w,0.2,r.d),fMat);
+    fl.position.set(r.x,0.1,r.z); fl.receiveShadow=true; scene.add(fl);
+    // ceiling
+    const ce=new THREE.Mesh(new THREE.BoxGeometry(r.w,0.2,r.d),cMat);
+    ce.position.set(r.x,3.3,r.z); scene.add(ce);
+    // walls
+    [[r.x-r.w/2,1.7,r.z,0.15,3.2,r.d],[r.x+r.w/2,1.7,r.z,0.15,3.2,r.d],
+     [r.x,1.7,r.z-r.d/2,r.w,3.2,0.15],[r.x,1.7,r.z+r.d/2,r.w,3.2,0.15]].forEach(p=>{
+      const w=new THREE.Mesh(new THREE.BoxGeometry(p[3],p[4],p[5]),wMat);
+      w.position.set(p[0],p[1],p[2]); w.castShadow=true; w.receiveShadow=true; scene.add(w);
+    });
+    // room light
+    const pl=new THREE.PointLight(0x110d05,0.35,r.w*1.6);
+    pl.position.set(r.x,2.6,r.z); scene.add(pl);
+    // hanging light bulb mesh
+    const bulb=new THREE.Mesh(new THREE.SphereGeometry(0.08,8,8),
+      new THREE.MeshBasicMaterial({color:0xffee88}));
+    bulb.position.set(r.x,3.0,r.z); scene.add(bulb);
+    const cord=new THREE.Mesh(new THREE.CylinderGeometry(0.01,0.01,0.4,4),
+      new THREE.MeshLambertMaterial({color:0x111111}));
+    cord.position.set(r.x,3.2,r.z); scene.add(cord);
+  }
+}
+
+function addBox(w,h,d,color,x,y,z,cast=false,tex=null){
+  const mat=tex?new THREE.MeshLambertMaterial({map:tex}):new THREE.MeshLambertMaterial({color});
+  const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);
+  m.position.set(x,y,z); m.castShadow=cast; m.receiveShadow=true; scene.add(m);
+  return m;
+}
+
+function addItem(w,h,d,color,x,y,z,label,action){
+  const mesh=addBox(w,h,d,color,x,y,z,true);
+  // glow outline
+  const glowMat=new THREE.MeshBasicMaterial({color:0xffee66,wireframe:true,transparent:true,opacity:0.15});
+  const glow=new THREE.Mesh(new THREE.BoxGeometry(w*1.1,h*1.1,d*1.1),glowMat);
+  mesh.add(glow);
+  interactables.push({mesh,label,action,used:false});
+}
+
+function buildObjects(){
+  const H=ROOMS.hall,SA=ROOMS.salon,KI=ROOMS.kitchen,BE=ROOMS.bedroom,CA=ROOMS.cave;
+  // Entrée
+  addBox(1.2,0.8,0.6,0x2a1a0a,H.x-2,0.5,H.z-3,true);
+  addBox(0.1,0.6,0.04,0x111,H.x-2,0.9+0.3,H.z-3.25,true); // candle
+  addBox(0.05,0.08,0.05,0xffcc44,H.x-2,0.9+0.62,H.z-3.25,false); // flame
+  const candleLight=new THREE.PointLight(0xff8800,0.8,3);
+  candleLight.position.set(H.x-2,1.2,H.z-3.25); scene.add(candleLight);
+  addItem(0.3,0.3,0.02,0x8b6040,H.x-2,1.05,H.z-3,'📷 Photo ancienne — [E]',()=>{
+    doFlashback('photo'); give('photo'); damageSanity(15); playJump();
+  });
+
+  // Salon
+  addBox(2.5,0.7,1,0x1a0f05,SA.x-1,0.45,SA.z+1,true);
+  addBox(0.6,0.5,0.5,0x111008,SA.x-1,0.75,SA.z-0.2,true); // pillow
+  addItem(0.25,0.3,0.02,0x4a3010,SA.x+2,1.05,SA.z-2,'📔 Journal — [E]',()=>{
+    doFlashback('journal'); damageSanity(20); playJump();
+  });
+  addItem(0.05,1.5,0.9,0x334455,SA.x+4.85,1.55,SA.z,'🪞 Miroir — [E]',()=>{
+    doFlashback('mirror'); damageSanity(10); playJump();
+  });
+  // mirror reflection tint
+  const mirrorLight=new THREE.PointLight(0x334466,0.5,4);
+  mirrorLight.position.set(SA.x+4,1.5,SA.z); scene.add(mirrorLight);
+
+  // Cuisine
+  addBox(1.4,0.85,0.6,0x151510,KI.x+2,0.52,KI.z-4,true);
+  addBox(1.4,0.05,0.6,0x222218,KI.x+2,0.97,KI.z-4,true);
+  addItem(0.12,0.05,0.22,0xddbb00,KI.x-1,0.95,KI.z-3,'🗝 Clé rouillée — [E]',()=>{
+    give('key'); damageSanity(5); playPickup();
+  });
+
+  // Chambre
+  const bedTex=makeWallTexture(40,18,18,'wood');
+  addBox(1.8,0.5,2,0x1a0808,BE.x-3,0.35,BE.z,true,bedTex);
+  addBox(1.8,0.3,0.5,0x110606,BE.x-3,0.65,BE.z-0.9,true);
+  addItem(0.2,0.5,0.1,0x553322,BE.x+4.85,1.55,BE.z-2,'🕰 Horloge arrêtée — [E]',()=>{
+    doFlashback('clock'); damageSanity(15); playJump();
+  });
+
+  // Cave
+  addBox(0.8,0.8,0.8,0x0d0905,CA.x-1,0.5,CA.z-2,true);
+  addBox(0.8,0.8,0.8,0x0d0905,CA.x,0.5,CA.z-2,true);
+  addBox(0.8,1.6,0.8,0x0d0905,CA.x+1,0.9,CA.z-2,true);
+  // blood pool on floor
+  const bloodGeo=new THREE.CircleGeometry(0.8,16);
+  const bloodMat=new THREE.MeshBasicMaterial({color:0x3a0000});
+  const blood=new THREE.Mesh(bloodGeo,bloodMat);
+  blood.rotation.x=-Math.PI/2; blood.position.set(CA.x+2,0.22,CA.z+1);
+  scene.add(blood);
+}
+
+function buildDoors(){
+  const H=ROOMS.hall,SA=ROOMS.salon,KI=ROOMS.kitchen,BE=ROOMS.bedroom,CA=ROOMS.cave;
+  const doorTex=makeWallTexture(55,28,8,'wood');
+  [
+    {x:(H.x+SA.x)/2,z:H.z,label:'Salon →',to:'salon',req:null},
+    {x:H.x,z:(H.z+KI.z)/2,label:'Cuisine →',to:'kitchen',req:null},
+    {x:(SA.x+BE.x)/2,z:SA.z+SA.d/2-0.1,label:'Chambre (photo requise)',to:'bedroom',req:'photo'},
+    {x:KI.x,z:(KI.z+CA.z)/2,label:'Cave →',to:'cave',req:null},
+    {x:CA.x+CA.w/2-0.15,z:CA.z,label:'SORTIE (clé requise)',to:'exit',req:'key'},
+  ].forEach(d=>{
+    const mesh=addBox(0.1,2.5,1,0x3a2010,d.x,1.25,d.z,true,doorTex);
+    // door frame
+    addBox(0.15,2.7,0.15,0x2a1808,d.x,1.35,d.z-0.55,true);
+    addBox(0.15,2.7,0.15,0x2a1808,d.x,1.35,d.z+0.55,true);
+    doorList.push({...d,mesh});
+  });
+}
+
+function buildParticles(){
+  const geo=new THREE.BufferGeometry();
+  const n=600,pos=new Float32Array(n*3);
+  for(let i=0;i<n;i++){
+    pos[i*3]=(Math.random()-.5)*65;
+    pos[i*3+1]=Math.random()*3.2;
+    pos[i*3+2]=(Math.random()-.5)*65;
+  }
+  geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
+  particles=new THREE.Points(geo,new THREE.PointsMaterial({color:0x444444,size:0.04,transparent:true,opacity:0.4}));
+  scene.add(particles);
+}
+
+function toggleLamp(){
+  lampOn=!lampOn;
+  lampLight.intensity=lampOn?2.8:0;
+}
+
+function give(item){
+  if(!inventory.includes(item)){
+    inventory.push(item);
+    const names={photo:'📷 Photo',key:'🗝 Clé'};
+    document.getElementById('inventory').innerHTML=inventory.map(k=>names[k]||k).join('<br>');
+  }
+}
+
+function damageSanity(v){
+  sanity=Math.max(0,sanity-v);
+  updateSanity();
+  if(heartGain) heartGain.gain.value=Math.max(0,(100-sanity)/100)*0.6;
+}
+
+function updateSanity(){
+  const v=Math.round(Math.max(0,Math.min(100,sanity)));
+  document.getElementById('sanity-bar').style.width=v+'%';
+  document.getElementById('sanity-bar').style.background=v>60?'#4a9':v>30?'#a94':'#a44';
+  document.getElementById('sanity-val').textContent=v;
+  document.getElementById('blood').style.boxShadow=
+    `inset 0 0 ${60+(100-v)}px rgba(130,0,0,${((100-v)/100)*0.75})`;
+  scene.fog.density=0.04+((100-v)/100)*0.12;
+}
+
+function showMsg(txt){
+  const el=document.getElementById('label');
+  el.textContent=txt; el.style.opacity='1';
+  clearTimeout(el._t); el._t=setTimeout(()=>el.style.opacity='0',2600);
+}
+
+function doFlashback(key){
+  if(flashbackShown[key]) return;
+  flashbackShown[key]=true;
+  const el=document.getElementById('flashback');
+  el.textContent=FLASHBACKS[key]||'';
+  el.style.opacity='1'; el.style.pointerEvents='auto';
+  setTimeout(()=>{el.style.opacity='0';el.style.pointerEvents='none';},3400);
+}
+
+function interact(){
+  const dir=new THREE.Vector3(); camera.getWorldDirection(dir);
+  const ray=new THREE.Raycaster(camera.position,dir,0,2.6);
+  const iH=ray.intersectObjects(interactables.filter(o=>!o.used).map(o=>o.mesh));
+  if(iH.length){
+    const obj=interactables.find(o=>o.mesh===iH[0].object&&!o.used);
+    if(obj){obj.used=true;obj.action?.();document.getElementById('label').style.opacity='0';}
+    return;
+  }
+  const dH=ray.intersectObjects(doorList.map(d=>d.mesh));
+  if(dH.length){
+    const door=doorList.find(d=>d.mesh===dH[0].object);
+    if(!door) return;
+    if(door.to==='exit'){
+      if(inventory.includes('key')) endGame();
+      else showMsg('Il faut la clé rouillée…');
+    } else if(door.req&&!inventory.includes(door.req)){
+      showMsg(`Bloqué — ${door.label}`);
+    } else {
+      const r=ROOMS[door.to];
+      camera.position.set(r.x,1.7,r.z);
+      damageSanity(5);
+      currentRoomName=r.name;
+      document.getElementById('roomname').textContent=r.name;
+      playCreak();
+    }
+  }
+}
+
+function endGame(){
+  const endings=[
+    {min:70,title:'LIBERTÉ',col:'#4a9',desc:'Vous franchissez la porte avec lucidité. L\'air frais efface presque tout.'},
+    {min:40,title:'TRAUMATISÉ',col:'#aa6',desc:'Vous êtes sorti, mais quelque chose est resté derrière — une ombre.'},
+    {min:10,title:'BRISÉ',col:'#a64',desc:'La porte s\'ouvre. Votre regard est vide, définitivement.'},
+    {min:0, title:'CONSUMÉ',col:'#a44',desc:'Une forme qui vous ressemble sort. La maison a tout gardé.'},
+  ];
+  const e=endings.find(en=>sanity>=en.min)||endings[endings.length-1];
+  document.getElementById('endscreen').style.display='flex';
+  document.getElementById('end-title').textContent=e.title;
+  document.getElementById('end-title').style.color=e.col;
+  document.getElementById('end-desc').textContent=e.desc;
+}
+
+let stepTimer=0;
+function loop(){
+  requestAnimationFrame(loop);
+  if(!gameStarted) return;
+  const dt=clock.getDelta();
+
+  const spd=3;
+  const fw=new THREE.Vector3(-Math.sin(yaw),0,-Math.cos(yaw));
+  const rt=new THREE.Vector3(Math.cos(yaw),0,-Math.sin(yaw));
+  const mv=new THREE.Vector3();
+  const moving=(keys['KeyW']||keys['ArrowUp']||keys['KeyZ']||keys['KeyS']||keys['ArrowDown']||keys['KeyA']||keys['ArrowLeft']||keys['KeyQ']||keys['KeyD']||keys['ArrowRight']);
+  if(keys['KeyW']||keys['ArrowUp']  ||keys['KeyZ']) mv.add(fw);
+  if(keys['KeyS']||keys['ArrowDown'])               mv.sub(fw);
+  if(keys['KeyA']||keys['ArrowLeft']||keys['KeyQ']) mv.sub(rt);
+  if(keys['KeyD']||keys['ArrowRight'])              mv.add(rt);
+  if(mv.lengthSq()>0) mv.normalize().multiplyScalar(spd*dt);
+  camera.position.add(mv);
+  camera.position.y=1.7;
+  camera.position.clamp(new THREE.Vector3(-35,1.7,-10),new THREE.Vector3(35,1.7,42));
+
+  // Footsteps
+  if(moving){ stepTimer+=dt; if(stepTimer>0.42){stepTimer=0;playStep();} }
+
+  // Bob when walking
+  if(moving) camera.position.y=1.7+Math.sin(Date.now()*0.008)*0.03;
+
+  // Lamp
+  if(lampOn){
+    lampPower=Math.max(0,lampPower-dt*1.3);
+    if(lampPower<=0){lampOn=false;lampLight.intensity=0;showMsg('La lampe est vide !');}
+    lampLight.intensity=2.2+Math.sin(Date.now()*0.009)*0.6+(Math.random()<0.03?-1.5:0);
+  }
+  document.getElementById('lamp-bar').style.width=lampPower+'%';
+
+  // Sanity
+  sanity=Math.max(0,sanity-(lampOn?0.4:2.8)*dt);
+  updateSanity();
+  if(heartGain) heartGain.gain.value=Math.max(0,(100-sanity)/100)*0.6;
+
+  // Particles
+  const pp=particles.geometry.attributes.position.array;
+  for(let i=1;i<pp.length;i+=3) pp[i]+=Math.sin(Date.now()*0.001+i)*0.0005;
+  particles.geometry.attributes.position.needsUpdate=true;
+
+  // Label
+  labelTimer+=dt;
+  if(labelTimer>0.25){
+    labelTimer=0;
+    const d2=new THREE.Vector3(); camera.getWorldDirection(d2);
+    const r2=new THREE.Raycaster(camera.position,d2,0,2.6);
+    const iH=r2.intersectObjects(interactables.filter(o=>!o.used).map(o=>o.mesh));
+    const dH=r2.intersectObjects(doorList.map(d=>d.mesh));
+    const lbl=document.getElementById('label');
+    if(iH.length){const o=interactables.find(x=>x.mesh===iH[0].object&&!x.used);if(o){lbl.textContent=o.label;lbl.style.opacity='1';}}
+    else if(dH.length){const d=doorList.find(x=>x.mesh===dH[0].object);if(d){lbl.textContent=d.label;lbl.style.opacity='1';}}
+    else lbl.style.opacity='0';
+  }
+
+  drawMinimap();
+  renderer.render(scene,camera);
+}
+
+function drawMinimap(){
+  const mc=document.getElementById('minimap'),mct=mc.getContext('2d');
+  mc.width=110;mc.height=90;
+  mct.fillStyle='rgba(0,0,0,.65)';mct.fillRect(0,0,110,90);
+  const sc=2.2,ox=55,oz=35;
+  mct.strokeStyle='#333';mct.lineWidth=1;
+  for(const r of Object.values(ROOMS)){
+    mct.strokeRect(ox+(r.x-r.w/2)*sc,oz+(r.z-r.d/2)*sc,r.w*sc,r.d*sc);
+  }
+  mct.fillStyle='#c00';
+  mct.beginPath();mct.arc(ox+camera.position.x*sc,oz+camera.position.z*sc,3,0,Math.PI*2);mct.fill();
+  mct.strokeStyle='#f55';mct.lineWidth=1.5;
+  mct.beginPath();
+  mct.moveTo(ox+camera.position.x*sc,oz+camera.position.z*sc);
+  mct.lineTo(ox+camera.position.x*sc+Math.sin(-yaw)*10,oz+camera.position.z*sc-Math.cos(yaw)*10);
+  mct.stroke();
+}
+</script>
+</body>
+</html>
