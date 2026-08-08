@@ -143,7 +143,7 @@ class JeuHorreur:
                 "objets": ["miroir", "chaise", "cheminee"],
                 "sorties": {"entree": True, "cuisine": True, "chambre": True},
                 "ascii": f"""
-  {C.GRIS}╔══════════════════════╗
+  {C.GRIS}╔════════════════════ ══╗
   ║   {C.ROUGE}LE SALON INVERSÉ{C.GRIS}   ║
   ║  {C.JAUNE}🪑──────────────🪑{C.GRIS}  ║
   ║     {C.CYAN}(plafond)  {C.GRIS}      ║
