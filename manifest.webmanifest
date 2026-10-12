@@ -1,0 +1,17 @@
+{
+  "id": "./index.html",
+  "name": "Maison Maudite",
+  "short_name": "Maison Maudite",
+  "description": "Explorez une maison hantée et trouvez la sortie avant de perdre la raison.",
+  "lang": "fr",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#000000",
+  "theme_color": "#120706",
+  "icons": [
+    { "src": "./icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "./icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

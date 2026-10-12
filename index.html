@@ -1,0 +1,870 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#120706">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Maison Maudite">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" href="./icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="./icon-180.png">
+<title>Maison Maudite — Jeu mobile</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{width:100%;height:100%;overscroll-behavior:none;}
+body{background:#000;overflow:hidden;font-family:monospace;touch-action:none;-webkit-user-select:none;user-select:none;}
+#c{display:block;width:100vw;height:100vh;height:100dvh;cursor:crosshair;touch-action:none;}
+#stats{position:fixed;top:14px;left:14px;color:#aaa;font-size:13px;line-height:2;text-shadow:0 0 8px #000;z-index:11;pointer-events:none;}
+.bar-bg{display:inline-block;width:100px;height:8px;background:#222;vertical-align:middle;border-radius:4px;overflow:hidden;}
+.bar-fill{height:100%;border-radius:4px;transition:width .5s;}
+#label{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);color:#ccc;font-size:14px;background:rgba(0,0,0,.7);padding:6px 16px;border-radius:20px;border:1px solid #444;opacity:0;transition:opacity .3s;z-index:11;pointer-events:none;white-space:nowrap;}
+#crosshair{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);color:rgba(255,255,255,.4);font-size:22px;z-index:11;pointer-events:none;}
+#blood{position:fixed;inset:0;pointer-events:none;z-index:9;box-shadow:inset 0 0 0 rgba(130,0,0,0);transition:box-shadow 1s;}
+#vignette{position:fixed;inset:0;pointer-events:none;z-index:8;background:radial-gradient(ellipse at center,transparent 50%,rgba(0,0,0,.8) 100%);}
+#flashback{position:fixed;inset:0;background:#000;display:flex;align-items:center;justify-content:center;color:#b00;font-size:20px;text-align:center;padding:50px;opacity:0;pointer-events:none;z-index:20;transition:opacity .5s;font-family:Georgia,serif;line-height:1.8;white-space:pre-line;}
+#overlay{position:fixed;inset:0;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#aaa;z-index:30;text-align:center;padding:40px;gap:12px;}
+#overlay h1{color:#c00;font-size:30px;letter-spacing:4px;margin-bottom:6px;}
+#overlay p{max-width:420px;line-height:1.8;font-size:14px;}
+#overlay small{color:#555;font-size:12px;}
+#overlay button{margin-top:14px;padding:11px 30px;background:transparent;border:1px solid #c00;color:#c00;font-family:monospace;font-size:15px;cursor:pointer;letter-spacing:2px;transition:all .2s;}
+#overlay button:hover{background:#c00;color:#000;}
+#inventory{position:fixed;bottom:28px;left:14px;color:#777;font-size:12px;z-index:11;pointer-events:none;line-height:2;}
+#minimap{position:fixed;top:14px;right:14px;width:110px;height:90px;z-index:11;pointer-events:none;}
+#endscreen{position:fixed;inset:0;background:#000;display:none;flex-direction:column;align-items:center;justify-content:center;color:#aaa;z-index:40;text-align:center;padding:40px;gap:16px;}
+#endscreen h1{font-size:28px;}
+#endscreen p{max-width:440px;line-height:1.8;font-size:15px;}
+#endscreen button{margin-top:10px;padding:10px 28px;background:transparent;border:1px solid #555;color:#aaa;font-family:monospace;font-size:14px;cursor:pointer;}
+#endscreen button:hover{background:#222;}
+#roomname{position:fixed;top:14px;left:50%;transform:translateX(-50%);color:#666;font-size:12px;letter-spacing:2px;z-index:11;pointer-events:none;}
+#mobile-controls{display:none;}
+button{touch-action:manipulation;-webkit-tap-highlight-color:transparent;}
+@media (pointer:coarse){
+  #stats{top:calc(10px + env(safe-area-inset-top));left:10px;font-size:11px;line-height:1.9;}
+  .bar-bg{width:62px;height:7px;}
+  #roomname{top:calc(12px + env(safe-area-inset-top));font-size:10px;letter-spacing:1px;}
+  #minimap{top:calc(10px + env(safe-area-inset-top));right:10px;width:78px;height:64px;}
+  #inventory{top:64px;bottom:auto;left:10px;font-size:10px;line-height:1.5;}
+  #label{bottom:calc(150px + env(safe-area-inset-bottom));max-width:82vw;font-size:12px;white-space:normal;text-align:center;}
+  #crosshair{font-size:20px;}
+  #mobile-controls{position:fixed;inset:0;display:flex;align-items:flex-end;justify-content:space-between;padding:0 18px calc(20px + env(safe-area-inset-bottom));z-index:12;pointer-events:none;}
+  #joystick{width:132px;height:132px;border:1px solid rgba(210,190,170,.3);border-radius:50%;background:rgba(8,8,8,.4);position:relative;pointer-events:auto;touch-action:none;}
+  #joystick:before,#joystick:after{content:"";position:absolute;background:rgba(210,190,170,.13);}
+  #joystick:before{left:50%;top:12%;bottom:12%;width:1px;}
+  #joystick:after{top:50%;left:12%;right:12%;height:1px;}
+  #stick-knob{position:absolute;left:50%;top:50%;width:54px;height:54px;border:1px solid rgba(230,210,185,.65);border-radius:50%;background:rgba(70,48,38,.8);transform:translate(-50%,-50%);box-shadow:0 0 18px rgba(110,0,0,.35);}
+  #mobile-actions{display:flex;flex-direction:column;gap:12px;align-items:flex-end;pointer-events:none;}
+  .mobile-action{min-width:94px;min-height:54px;padding:8px 12px;border:1px solid rgba(190,160,140,.55);border-radius:14px;color:#eee;background:rgba(12,8,8,.76);font:12px monospace;letter-spacing:1px;pointer-events:auto;touch-action:none;box-shadow:0 4px 16px #0008;}
+  .mobile-action strong{display:block;color:#d88;font-size:18px;line-height:1.1;}
+  #overlay{padding:28px 22px;gap:10px;padding-top:calc(28px + env(safe-area-inset-top));padding-bottom:calc(28px + env(safe-area-inset-bottom));}
+  #overlay h1{font-size:clamp(24px,7vw,30px);letter-spacing:3px;}
+  #overlay p{font-size:13px;line-height:1.6;}
+  #overlay small{max-width:420px;line-height:1.7;}
+  #overlay .desktop-help{display:none;}
+  #overlay .mobile-help{display:block;}
+  #overlay button,#endscreen button{min-height:48px;padding:12px 24px;}
+  #endscreen{padding:28px 22px;}
+  #flashback{padding:30px 22px;font-size:18px;}
+}
+@media (pointer:coarse) and (max-width:380px){
+  #joystick{width:116px;height:116px;}
+  #stick-knob{width:48px;height:48px;}
+  #mobile-controls{padding-left:12px;padding-right:12px;}
+  .mobile-action{min-width:82px;min-height:50px;padding:7px 9px;}
+  #label{bottom:calc(136px + env(safe-area-inset-bottom));}
+}
+.mobile-help{display:none;}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="vignette"></div>
+<div id="blood"></div>
+<div id="stats">
+  <div>Sanité&nbsp;<span class="bar-bg"><span id="sanity-bar" class="bar-fill" style="width:100%;background:#4a9;"></span></span>&nbsp;<span id="sanity-val">100</span></div>
+  <div>Lampe&nbsp;&nbsp;<span class="bar-bg"><span id="lamp-bar" class="bar-fill" style="width:100%;background:#aa6;"></span></span></div>
+</div>
+<div id="roomname">ENTRÉE</div>
+<div id="inventory"></div>
+<div id="crosshair">＋</div>
+<div id="label"></div>
+<canvas id="minimap"></canvas>
+<div id="flashback"></div>
+<div id="overlay">
+  <h1>MAISON MAUDITE</h1>
+  <p>Explorez les 5 pièces, trouvez la <b>photo</b> et la <b>clé</b>, fuyez avant de perdre la raison.</p>
+  <p id="game-error" style="display:none;color:#d77">Le moteur 3D ne s’est pas chargé. Connectez-vous à Internet puis rechargez le jeu.</p>
+  <small class="desktop-help">ZQSD/WASD — déplacer &nbsp;|&nbsp; Souris — regarder &nbsp;|&nbsp; E — interagir &nbsp;|&nbsp; F — lampe</small>
+  <small class="mobile-help">Utilisez le joystick à gauche pour avancer. Glissez sur l’image pour regarder. Touchez AGIR pour examiner et LAMPE pour l’allumer ou l’éteindre.</small>
+  <button id="continue-btn" style="display:none" onclick="startGame(true)">REPRENDRE</button>
+  <button id="new-game-btn" onclick="startGame(false)">NOUVELLE PARTIE</button>
+  <button id="install-btn" style="display:none">INSTALLER LE JEU</button>
+</div>
+<div id="endscreen">
+  <h1 id="end-title"></h1>
+  <p id="end-desc"></p>
+  <button onclick="location.reload()">Recommencer</button>
+</div>
+
+<div id="mobile-controls" aria-label="Commandes tactiles">
+  <div id="joystick" aria-label="Joystick de déplacement"><div id="stick-knob"></div></div>
+  <div id="mobile-actions">
+    <button id="interact-btn" class="mobile-action" aria-label="Interagir"><strong>＋</strong>AGIR</button>
+    <button id="lamp-btn" class="mobile-action" aria-label="Allumer ou éteindre la lampe"><strong>☼</strong>LAMPE</button>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" onerror="document.getElementById('game-error').style.display='block';document.querySelectorAll('#overlay button').forEach(b=>b.disabled=true)"></script>
+<script>
+let scene,camera,renderer,clock;
+let sanity=100,lampPower=100,lampOn=true;
+let keys={},yaw=0,pitch=0;
+let touchMoveX=0,touchMoveY=0,lookPointerId=null,lastLookX=0,lastLookY=0;
+let interactables=[],doorList=[],inventory=[];
+let lampLight,particles,gameStarted=false;
+let flashbackShown={},labelTimer=0;
+let audioCtx,ambienceNode,heartNode,heartGain;
+let currentRoomName='ENTRÉE';
+let saveTimer=0;
+const SAVE_KEY='maison-maudite-save-v1';
+
+// ---- WEB AUDIO ----
+function initAudio(){
+  audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+  playAmbience();
+  startHeartbeat();
+  playCreak();
+}
+
+function playAmbience(){
+  // Low drone — dark hum
+  const osc1=audioCtx.createOscillator();
+  const osc2=audioCtx.createOscillator();
+  const gain=audioCtx.createGain();
+  const filter=audioCtx.createBiquadFilter();
+  osc1.type='sawtooth'; osc1.frequency.value=40;
+  osc2.type='sawtooth'; osc2.frequency.value=41.2;
+  filter.type='lowpass'; filter.frequency.value=200;
+  gain.gain.value=0.06;
+  osc1.connect(filter); osc2.connect(filter);
+  filter.connect(gain); gain.connect(audioCtx.destination);
+  osc1.start(); osc2.start();
+  ambienceNode=gain;
+
+  // Wind noise
+  const bufSize=audioCtx.sampleRate*2;
+  const buf=audioCtx.createBuffer(1,bufSize,audioCtx.sampleRate);
+  const data=buf.getChannelData(0);
+  for(let i=0;i<bufSize;i++) data[i]=(Math.random()*2-1)*0.015;
+  const src=audioCtx.createBufferSource();
+  src.buffer=buf; src.loop=true;
+  const wf=audioCtx.createBiquadFilter();
+  wf.type='bandpass'; wf.frequency.value=300; wf.Q.value=0.5;
+  const wg=audioCtx.createGain(); wg.gain.value=0.4;
+  src.connect(wf); wf.connect(wg); wg.connect(audioCtx.destination);
+  src.start();
+}
+
+function startHeartbeat(){
+  heartGain=audioCtx.createGain();
+  heartGain.gain.value=0;
+  heartGain.connect(audioCtx.destination);
+  function beat(){
+    if(!audioCtx) return;
+    const t=audioCtx.currentTime;
+    const osc=audioCtx.createOscillator();
+    const g=audioCtx.createGain();
+    osc.type='sine'; osc.frequency.value=60;
+    g.gain.setValueAtTime(0,t);
+    g.gain.linearRampToValueAtTime(0.5,t+0.05);
+    g.gain.exponentialRampToValueAtTime(0.001,t+0.3);
+    osc.connect(g); g.connect(heartGain);
+    osc.start(t); osc.stop(t+0.35);
+    const bpm=40+((100-sanity)/100)*80;
+    setTimeout(beat,60000/bpm);
+  }
+  beat();
+}
+
+function playCreak(){
+  if(!audioCtx) return;
+  const t=audioCtx.currentTime;
+  const osc=audioCtx.createOscillator();
+  const g=audioCtx.createGain();
+  osc.type='sawtooth';
+  osc.frequency.setValueAtTime(180,t);
+  osc.frequency.exponentialRampToValueAtTime(80,t+0.4);
+  g.gain.setValueAtTime(0,t);
+  g.gain.linearRampToValueAtTime(0.08,t+0.05);
+  g.gain.exponentialRampToValueAtTime(0.001,t+0.5);
+  osc.connect(g); g.connect(audioCtx.destination);
+  osc.start(t); osc.stop(t+0.6);
+  setTimeout(playCreak, 8000+Math.random()*14000);
+}
+
+function playJump(){
+  if(!audioCtx) return;
+  const t=audioCtx.currentTime;
+  // white noise burst
+  const buf=audioCtx.createBuffer(1,audioCtx.sampleRate*0.3,audioCtx.sampleRate);
+  const d=buf.getChannelData(0);
+  for(let i=0;i<d.length;i++) d[i]=(Math.random()*2-1);
+  const src=audioCtx.createBufferSource();
+  src.buffer=buf;
+  const g=audioCtx.createGain();
+  g.gain.setValueAtTime(0.4,t);
+  g.gain.exponentialRampToValueAtTime(0.001,t+0.3);
+  const f=audioCtx.createBiquadFilter();
+  f.type='bandpass'; f.frequency.value=800;
+  src.connect(f); f.connect(g); g.connect(audioCtx.destination);
+  src.start(t);
+}
+
+function playStep(){
+  if(!audioCtx) return;
+  const t=audioCtx.currentTime;
+  const osc=audioCtx.createOscillator();
+  const g=audioCtx.createGain();
+  osc.type='sine'; osc.frequency.value=120;
+  g.gain.setValueAtTime(0.12,t);
+  g.gain.exponentialRampToValueAtTime(0.001,t+0.12);
+  osc.connect(g); g.connect(audioCtx.destination);
+  osc.start(t); osc.stop(t+0.15);
+}
+
+function playPickup(){
+  if(!audioCtx) return;
+  const t=audioCtx.currentTime;
+  [440,550,660].forEach((f,i)=>{
+    const osc=audioCtx.createOscillator();
+    const g=audioCtx.createGain();
+    osc.frequency.value=f;
+    g.gain.setValueAtTime(0.08,t+i*0.07);
+    g.gain.exponentialRampToValueAtTime(0.001,t+i*0.07+0.2);
+    osc.connect(g); g.connect(audioCtx.destination);
+    osc.start(t+i*0.07); osc.stop(t+i*0.07+0.25);
+  });
+}
+
+// ---- PROCEDURAL TEXTURES ----
+function makeWallTexture(r,g,b,type){
+  const sz=256;
+  const cv=document.createElement('canvas');
+  cv.width=sz; cv.height=sz;
+  const cx=cv.getContext('2d');
+  cx.fillStyle=`rgb(${r},${g},${b})`;
+  cx.fillRect(0,0,sz,sz);
+
+  if(type==='brick'){
+    cx.strokeStyle=`rgba(0,0,0,0.5)`;
+    cx.lineWidth=2;
+    const bw=64,bh=32;
+    for(let row=0;row<sz/bh+1;row++){
+      const offset=(row%2)*bw/2;
+      for(let col=-1;col<sz/bw+1;col++){
+        const x=col*bw+offset,y=row*bh;
+        cx.strokeRect(x+1,y+1,bw-2,bh-2);
+        // mortar
+        cx.fillStyle=`rgba(0,0,0,0.3)`;
+        cx.fillRect(x,y,bw,2);
+        cx.fillRect(x,y,2,bh);
+        // highlight
+        cx.fillStyle=`rgba(255,255,255,0.04)`;
+        cx.fillRect(x+3,y+3,bw-6,bh-6);
+      }
+    }
+  } else if(type==='plaster'){
+    // noise grain
+    for(let i=0;i<4000;i++){
+      const px2=Math.random()*sz,py2=Math.random()*sz;
+      const v=Math.random()*40-20;
+      cx.fillStyle=`rgba(${v>0?255:0},${v>0?255:0},${v>0?255:0},${Math.abs(v)/200})`;
+      cx.fillRect(px2,py2,2,2);
+    }
+    // cracks
+    cx.strokeStyle='rgba(0,0,0,0.3)'; cx.lineWidth=1;
+    for(let c=0;c<5;c++){
+      cx.beginPath();
+      cx.moveTo(Math.random()*sz,Math.random()*sz);
+      for(let s=0;s<6;s++) cx.lineTo(Math.random()*sz,Math.random()*sz);
+      cx.stroke();
+    }
+  } else if(type==='wood'){
+    for(let i=0;i<20;i++){
+      cx.fillStyle=`rgba(0,0,0,${0.05+Math.random()*0.1})`;
+      cx.fillRect(0,i*(sz/20),sz,sz/20-1);
+    }
+  } else if(type==='stone'){
+    for(let i=0;i<800;i++){
+      const px2=Math.random()*sz,py2=Math.random()*sz,rad=1+Math.random()*3;
+      cx.fillStyle=`rgba(0,0,0,${Math.random()*0.3})`;
+      cx.beginPath(); cx.arc(px2,py2,rad,0,Math.PI*2); cx.fill();
+    }
+  }
+
+  const tex=new THREE.CanvasTexture(cv);
+  tex.wrapS=tex.wrapT=THREE.RepeatWrapping;
+  tex.repeat.set(2,1);
+  return tex;
+}
+
+function makeFloorTexture(r,g,b){
+  const sz=256;
+  const cv=document.createElement('canvas');
+  cv.width=sz; cv.height=sz;
+  const cx=cv.getContext('2d');
+  cx.fillStyle=`rgb(${r},${g},${b})`;
+  cx.fillRect(0,0,sz,sz);
+  // tiles
+  const ts=64;
+  for(let row=0;row<sz/ts;row++){
+    for(let col=0;col<sz/ts;col++){
+      cx.strokeStyle='rgba(0,0,0,0.6)';
+      cx.lineWidth=3;
+      cx.strokeRect(col*ts+1,row*ts+1,ts-2,ts-2);
+      // dirt spots
+      for(let i=0;i<8;i++){
+        cx.fillStyle=`rgba(0,0,0,${Math.random()*0.15})`;
+        cx.beginPath();
+        cx.arc(col*ts+Math.random()*ts,row*ts+Math.random()*ts,1+Math.random()*4,0,Math.PI*2);
+        cx.fill();
+      }
+    }
+  }
+  const tex=new THREE.CanvasTexture(cv);
+  tex.wrapS=tex.wrapT=THREE.RepeatWrapping;
+  tex.repeat.set(3,3);
+  return tex;
+}
+
+// ---- ROOMS ----
+const ROOMS={
+  hall:    {x:0,  z:0,  w:8, d:8, name:'ENTRÉE',  wtype:'plaster', wr:40,wg:28,wb:18, fr:22,fg:16,fb:10},
+  salon:   {x:14, z:0,  w:10,d:8, name:'SALON',   wtype:'plaster', wr:20,wg:20,wb:45, fr:15,fg:15,fb:28},
+  kitchen: {x:0,  z:14, w:8, d:10,name:'CUISINE', wtype:'brick',   wr:28,wg:42,wb:20, fr:15,fg:22,fb:12},
+  bedroom: {x:14, z:14, w:10,d:10,name:'CHAMBRE', wtype:'wood',    wr:50,wg:18,wb:18, fr:30,fg:12,fb:12},
+  cave:    {x:7,  z:28, w:8, d:8, name:'CAVE',    wtype:'stone',   wr:15,wg:15,wb:15, fr:10,fg:10,fb:10},
+};
+
+const FLASHBACKS={
+  photo:   "Elle sourit dans le jardin…\nC'était avant.\nAvant que la maison commence à respirer.",
+  journal: "12 octobre — les bruits reprennent la nuit.\nQuelque chose gratte sous le plancher.\nJe n'ose plus allumer la lumière.",
+  mirror:  "Le reflet bouge.\nMais pas moi.\nIl sourit. Je ne souris pas.\nPuis les lumières s'éteignent.",
+  clock:   "L'horloge s'est arrêtée à 3h13.\nDepuis, le temps ne compte plus.\nDepuis, ils reviennent.",
+};
+
+function startGame(resume=false){
+  if(typeof THREE==='undefined'){
+    document.getElementById('game-error').style.display='block';
+    return;
+  }
+  document.getElementById('overlay').style.display='none';
+  init();
+  if(resume) restoreSave();
+  else resetGame();
+  if(!audioCtx) safeStartAudio();
+  gameStarted=true;
+  saveGame();
+  requestAnimationFrame(loop);
+}
+
+function resetGame(){
+  sanity=100; lampPower=100; lampOn=true; yaw=0; pitch=0;
+  inventory=[]; flashbackShown={}; currentRoomName='ENTRÉE';
+  camera.position.set(0,1.7,0);
+  camera.rotation.order='YXZ'; camera.rotation.set(0,0,0);
+  interactables.forEach(o=>o.used=false);
+  lampLight.intensity=2.8;
+  renderInventory(); updateSanity();
+  document.getElementById('roomname').textContent=currentRoomName;
+  try{localStorage.removeItem(SAVE_KEY);}catch(e){}
+}
+
+function safeStartAudio(){
+  try{initAudio();}catch(e){audioCtx=null;}
+}
+
+function saveGame(){
+  if(!camera||!gameStarted)return;
+  try{
+    localStorage.setItem(SAVE_KEY,JSON.stringify({
+      x:camera.position.x,z:camera.position.z,yaw,pitch,sanity,lampPower,lampOn,
+      inventory,flashbackShown,currentRoomName,
+      used:interactables.filter(o=>o.used).map(o=>o.label)
+    }));
+  }catch(e){}
+}
+
+function restoreSave(){
+  try{
+    const data=JSON.parse(localStorage.getItem(SAVE_KEY)||'null');
+    if(!data)return;
+    camera.position.set(Number(data.x)||0,1.7,Number(data.z)||0);
+    yaw=Number(data.yaw)||0; pitch=Number(data.pitch)||0;
+    camera.rotation.order='YXZ'; camera.rotation.y=yaw; camera.rotation.x=pitch;
+    const savedSanity=Number(data.sanity);
+    sanity=Math.max(0,Math.min(100,Number.isFinite(savedSanity)?savedSanity:100));
+    lampPower=Math.max(0,Math.min(100,Number(data.lampPower)||0));
+    lampOn=Boolean(data.lampOn)&&lampPower>0;
+    inventory=Array.isArray(data.inventory)?data.inventory:[];
+    flashbackShown=data.flashbackShown||{};
+    currentRoomName=data.currentRoomName||'ENTRÉE';
+    const used=new Set(Array.isArray(data.used)?data.used:[]);
+    interactables.forEach(o=>o.used=used.has(o.label));
+    lampLight.intensity=lampOn?2.8:0;
+    document.getElementById('roomname').textContent=currentRoomName;
+    renderInventory(); updateSanity();
+  }catch(e){resetGame();}
+}
+
+function init(){
+  scene=new THREE.Scene();
+  scene.fog=new THREE.FogExp2(0x000000,0.055);
+  camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,0.1,80);
+  camera.position.set(0,1.7,0);
+  renderer=new THREE.WebGLRenderer({canvas:document.getElementById('c'),antialias:true});
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1.5));
+  renderer.setSize(innerWidth,innerHeight);
+  renderer.shadowMap.enabled=!matchMedia('(pointer: coarse)').matches;
+  renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+  clock=new THREE.Clock();
+
+  scene.add(new THREE.AmbientLight(0x0a0906,1));
+  lampLight=new THREE.PointLight(0xffcc88,2.8,15);
+  camera.add(lampLight);
+  scene.add(camera);
+
+  buildRooms();
+  buildObjects();
+  buildDoors();
+  buildParticles();
+
+  const canvas=document.getElementById('c');
+  canvas.addEventListener('click',()=>{
+    if(!matchMedia('(pointer: coarse)').matches&&canvas.requestPointerLock) canvas.requestPointerLock();
+    if(!audioCtx) safeStartAudio();
+  });
+  canvas.addEventListener('pointerdown',e=>{
+    if(e.pointerType!=='touch'||!gameStarted)return;
+    e.preventDefault(); lookPointerId=e.pointerId; lastLookX=e.clientX; lastLookY=e.clientY;
+    try{canvas.setPointerCapture(e.pointerId);}catch(err){}
+    if(!audioCtx)safeStartAudio();
+  });
+  canvas.addEventListener('pointermove',e=>{
+    if(e.pointerId!==lookPointerId)return;
+    const dx=e.clientX-lastLookX,dy=e.clientY-lastLookY;
+    lastLookX=e.clientX;lastLookY=e.clientY;
+    yaw-=dx*0.004; pitch=Math.max(-1.2,Math.min(1.2,pitch-dy*0.004));
+    updateCameraRotation();
+  });
+  const stopLook=e=>{if(e.pointerId===lookPointerId)lookPointerId=null;};
+  canvas.addEventListener('pointerup',stopLook);
+  canvas.addEventListener('pointercancel',stopLook);
+  document.addEventListener('mousemove',e=>{
+    if(document.pointerLockElement!==canvas) return;
+    yaw-=e.movementX*0.002;
+    pitch-=e.movementY*0.002;
+    pitch=Math.max(-1.2,Math.min(1.2,pitch));
+    updateCameraRotation();
+  });
+  document.addEventListener('keydown',e=>{
+    keys[e.code]=true;
+    if(e.code==='KeyF') toggleLamp();
+    if(e.code==='KeyE') interact();
+  });
+  document.addEventListener('keyup',e=>{keys[e.code]=false;});
+  const resize=()=>{
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1.5));
+    renderer.setSize(innerWidth,innerHeight);
+    camera.aspect=innerWidth/innerHeight;
+    camera.updateProjectionMatrix();
+  };
+  window.addEventListener('resize',resize);
+  window.addEventListener('orientationchange',()=>setTimeout(resize,250));
+  setupTouchControls();
+}
+
+function updateCameraRotation(){
+  if(!camera)return;
+  camera.rotation.order='YXZ';camera.rotation.y=yaw;camera.rotation.x=pitch;
+}
+
+function setupTouchControls(){
+  const pad=document.getElementById('joystick'),knob=document.getElementById('stick-knob');
+  let padPointerId=null;
+  const moveStick=e=>{
+    if(e.pointerId!==padPointerId)return;
+    const box=pad.getBoundingClientRect();
+    const limit=box.width*0.34;
+    let dx=e.clientX-(box.left+box.width/2),dy=e.clientY-(box.top+box.height/2);
+    const distance=Math.hypot(dx,dy);
+    if(distance>limit){dx=dx/distance*limit;dy=dy/distance*limit;}
+    touchMoveX=dx/limit;touchMoveY=dy/limit;
+    knob.style.left=`calc(50% + ${dx}px)`;knob.style.top=`calc(50% + ${dy}px)`;
+  };
+  const resetStick=e=>{
+    if(e.pointerId!==padPointerId)return;
+    padPointerId=null;touchMoveX=0;touchMoveY=0;
+    knob.style.left='50%';knob.style.top='50%';
+  };
+  pad.addEventListener('pointerdown',e=>{
+    e.preventDefault();padPointerId=e.pointerId;
+    try{pad.setPointerCapture(e.pointerId);}catch(err){}
+    moveStick(e);
+  });
+  pad.addEventListener('pointermove',moveStick);
+  pad.addEventListener('pointerup',resetStick);
+  pad.addEventListener('pointercancel',resetStick);
+  document.getElementById('interact-btn').addEventListener('pointerdown',e=>{e.preventDefault();if(gameStarted)interact();});
+  document.getElementById('lamp-btn').addEventListener('pointerdown',e=>{e.preventDefault();if(gameStarted)toggleLamp();});
+}
+
+function buildRooms(){
+  for(const [id,r] of Object.entries(ROOMS)){
+    const wTex=makeWallTexture(r.wr,r.wg,r.wb,r.wtype);
+    const fTex=makeFloorTexture(r.fr,r.fg,r.fb);
+    const cTex=makeWallTexture(8,6,5,'plaster');
+    const wMat=new THREE.MeshLambertMaterial({map:wTex});
+    const fMat=new THREE.MeshLambertMaterial({map:fTex});
+    const cMat=new THREE.MeshLambertMaterial({map:cTex});
+
+    // floor
+    const fl=new THREE.Mesh(new THREE.BoxGeometry(r.w,0.2,r.d),fMat);
+    fl.position.set(r.x,0.1,r.z); fl.receiveShadow=true; scene.add(fl);
+    // ceiling
+    const ce=new THREE.Mesh(new THREE.BoxGeometry(r.w,0.2,r.d),cMat);
+    ce.position.set(r.x,3.3,r.z); scene.add(ce);
+    // walls
+    [[r.x-r.w/2,1.7,r.z,0.15,3.2,r.d],[r.x+r.w/2,1.7,r.z,0.15,3.2,r.d],
+     [r.x,1.7,r.z-r.d/2,r.w,3.2,0.15],[r.x,1.7,r.z+r.d/2,r.w,3.2,0.15]].forEach(p=>{
+      const w=new THREE.Mesh(new THREE.BoxGeometry(p[3],p[4],p[5]),wMat);
+      w.position.set(p[0],p[1],p[2]); w.castShadow=true; w.receiveShadow=true; scene.add(w);
+    });
+    // room light
+    const pl=new THREE.PointLight(0x110d05,0.35,r.w*1.6);
+    pl.position.set(r.x,2.6,r.z); scene.add(pl);
+    // hanging light bulb mesh
+    const bulb=new THREE.Mesh(new THREE.SphereGeometry(0.08,8,8),
+      new THREE.MeshBasicMaterial({color:0xffee88}));
+    bulb.position.set(r.x,3.0,r.z); scene.add(bulb);
+    const cord=new THREE.Mesh(new THREE.CylinderGeometry(0.01,0.01,0.4,4),
+      new THREE.MeshLambertMaterial({color:0x111111}));
+    cord.position.set(r.x,3.2,r.z); scene.add(cord);
+  }
+}
+
+function addBox(w,h,d,color,x,y,z,cast=false,tex=null){
+  const mat=tex?new THREE.MeshLambertMaterial({map:tex}):new THREE.MeshLambertMaterial({color});
+  const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);
+  m.position.set(x,y,z); m.castShadow=cast; m.receiveShadow=true; scene.add(m);
+  return m;
+}
+
+function addItem(w,h,d,color,x,y,z,label,action){
+  const mesh=addBox(w,h,d,color,x,y,z,true);
+  // glow outline
+  const glowMat=new THREE.MeshBasicMaterial({color:0xffee66,wireframe:true,transparent:true,opacity:0.15});
+  const glow=new THREE.Mesh(new THREE.BoxGeometry(w*1.1,h*1.1,d*1.1),glowMat);
+  mesh.add(glow);
+  interactables.push({mesh,label,action,used:false});
+}
+
+function buildObjects(){
+  const H=ROOMS.hall,SA=ROOMS.salon,KI=ROOMS.kitchen,BE=ROOMS.bedroom,CA=ROOMS.cave;
+  // Entrée
+  addBox(1.2,0.8,0.6,0x2a1a0a,H.x-2,0.5,H.z-3,true);
+  addBox(0.1,0.6,0.04,0x111,H.x-2,0.9+0.3,H.z-3.25,true); // candle
+  addBox(0.05,0.08,0.05,0xffcc44,H.x-2,0.9+0.62,H.z-3.25,false); // flame
+  const candleLight=new THREE.PointLight(0xff8800,0.8,3);
+  candleLight.position.set(H.x-2,1.2,H.z-3.25); scene.add(candleLight);
+  addItem(0.3,0.3,0.02,0x8b6040,H.x-2,1.05,H.z-3,'📷 Photo ancienne — [E]',()=>{
+    doFlashback('photo'); give('photo'); damageSanity(15); playJump();
+  });
+
+  // Salon
+  addBox(2.5,0.7,1,0x1a0f05,SA.x-1,0.45,SA.z+1,true);
+  addBox(0.6,0.5,0.5,0x111008,SA.x-1,0.75,SA.z-0.2,true); // pillow
+  addItem(0.25,0.3,0.02,0x4a3010,SA.x+2,1.05,SA.z-2,'📔 Journal — [E]',()=>{
+    doFlashback('journal'); damageSanity(20); playJump();
+  });
+  addItem(0.05,1.5,0.9,0x334455,SA.x+4.85,1.55,SA.z,'🪞 Miroir — [E]',()=>{
+    doFlashback('mirror'); damageSanity(10); playJump();
+  });
+  // mirror reflection tint
+  const mirrorLight=new THREE.PointLight(0x334466,0.5,4);
+  mirrorLight.position.set(SA.x+4,1.5,SA.z); scene.add(mirrorLight);
+
+  // Cuisine
+  addBox(1.4,0.85,0.6,0x151510,KI.x+2,0.52,KI.z-4,true);
+  addBox(1.4,0.05,0.6,0x222218,KI.x+2,0.97,KI.z-4,true);
+  addItem(0.12,0.05,0.22,0xddbb00,KI.x-1,0.95,KI.z-3,'🗝 Clé rouillée — [E]',()=>{
+    give('key'); damageSanity(5); playPickup();
+  });
+
+  // Chambre
+  const bedTex=makeWallTexture(40,18,18,'wood');
+  addBox(1.8,0.5,2,0x1a0808,BE.x-3,0.35,BE.z,true,bedTex);
+  addBox(1.8,0.3,0.5,0x110606,BE.x-3,0.65,BE.z-0.9,true);
+  addItem(0.2,0.5,0.1,0x553322,BE.x+4.85,1.55,BE.z-2,'🕰 Horloge arrêtée — [E]',()=>{
+    doFlashback('clock'); damageSanity(15); playJump();
+  });
+
+  // Cave
+  addBox(0.8,0.8,0.8,0x0d0905,CA.x-1,0.5,CA.z-2,true);
+  addBox(0.8,0.8,0.8,0x0d0905,CA.x,0.5,CA.z-2,true);
+  addBox(0.8,1.6,0.8,0x0d0905,CA.x+1,0.9,CA.z-2,true);
+  // blood pool on floor
+  const bloodGeo=new THREE.CircleGeometry(0.8,16);
+  const bloodMat=new THREE.MeshBasicMaterial({color:0x3a0000});
+  const blood=new THREE.Mesh(bloodGeo,bloodMat);
+  blood.rotation.x=-Math.PI/2; blood.position.set(CA.x+2,0.22,CA.z+1);
+  scene.add(blood);
+}
+
+function buildDoors(){
+  const H=ROOMS.hall,SA=ROOMS.salon,KI=ROOMS.kitchen,BE=ROOMS.bedroom,CA=ROOMS.cave;
+  const doorTex=makeWallTexture(55,28,8,'wood');
+  [
+    {x:(H.x+SA.x)/2,z:H.z,label:'Salon →',to:'salon',req:null},
+    {x:H.x,z:(H.z+KI.z)/2,label:'Cuisine →',to:'kitchen',req:null},
+    {x:(SA.x+BE.x)/2,z:SA.z+SA.d/2-0.1,label:'Chambre (photo requise)',to:'bedroom',req:'photo'},
+    {x:KI.x,z:(KI.z+CA.z)/2,label:'Cave →',to:'cave',req:null},
+    {x:CA.x+CA.w/2-0.15,z:CA.z,label:'SORTIE (clé requise)',to:'exit',req:'key'},
+  ].forEach(d=>{
+    const mesh=addBox(0.1,2.5,1,0x3a2010,d.x,1.25,d.z,true,doorTex);
+    // door frame
+    addBox(0.15,2.7,0.15,0x2a1808,d.x,1.35,d.z-0.55,true);
+    addBox(0.15,2.7,0.15,0x2a1808,d.x,1.35,d.z+0.55,true);
+    doorList.push({...d,mesh});
+  });
+}
+
+function buildParticles(){
+  const geo=new THREE.BufferGeometry();
+  const n=matchMedia('(pointer: coarse)').matches?180:600,pos=new Float32Array(n*3);
+  for(let i=0;i<n;i++){
+    pos[i*3]=(Math.random()-.5)*65;
+    pos[i*3+1]=Math.random()*3.2;
+    pos[i*3+2]=(Math.random()-.5)*65;
+  }
+  geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
+  particles=new THREE.Points(geo,new THREE.PointsMaterial({color:0x444444,size:0.04,transparent:true,opacity:0.4}));
+  scene.add(particles);
+}
+
+function toggleLamp(){
+  if(!lampOn&&lampPower<=0){showMsg('La lampe est vide !');return;}
+  lampOn=!lampOn;
+  lampLight.intensity=lampOn?2.8:0;
+}
+
+function give(item){
+  if(!inventory.includes(item)){
+    inventory.push(item);
+    renderInventory();
+  }
+}
+
+function renderInventory(){
+  const names={photo:'📷 Photo',key:'🗝 Clé'};
+  document.getElementById('inventory').innerHTML=inventory.map(k=>names[k]||k).join('<br>');
+}
+
+function damageSanity(v){
+  sanity=Math.max(0,sanity-v);
+  updateSanity();
+  if(heartGain) heartGain.gain.value=Math.max(0,(100-sanity)/100)*0.6;
+}
+
+function updateSanity(){
+  const v=Math.round(Math.max(0,Math.min(100,sanity)));
+  document.getElementById('sanity-bar').style.width=v+'%';
+  document.getElementById('sanity-bar').style.background=v>60?'#4a9':v>30?'#a94':'#a44';
+  document.getElementById('sanity-val').textContent=v;
+  document.getElementById('blood').style.boxShadow=
+    `inset 0 0 ${60+(100-v)}px rgba(130,0,0,${((100-v)/100)*0.75})`;
+  scene.fog.density=0.04+((100-v)/100)*0.12;
+}
+
+function showMsg(txt){
+  const el=document.getElementById('label');
+  el.textContent=txt; el.style.opacity='1';
+  clearTimeout(el._t); el._t=setTimeout(()=>el.style.opacity='0',2600);
+}
+
+function doFlashback(key){
+  if(flashbackShown[key]) return;
+  flashbackShown[key]=true;
+  const el=document.getElementById('flashback');
+  el.textContent=FLASHBACKS[key]||'';
+  el.style.opacity='1'; el.style.pointerEvents='auto';
+  setTimeout(()=>{el.style.opacity='0';el.style.pointerEvents='none';},3400);
+}
+
+function interact(){
+  const dir=new THREE.Vector3(); camera.getWorldDirection(dir);
+  const ray=new THREE.Raycaster(camera.position,dir,0,2.6);
+  const iH=ray.intersectObjects(interactables.filter(o=>!o.used).map(o=>o.mesh));
+  if(iH.length){
+    const obj=interactables.find(o=>{
+      let hit=iH[0].object;
+      while(hit&&hit!==o.mesh)hit=hit.parent;
+      return hit===o.mesh&&!o.used;
+    });
+    if(obj){obj.used=true;obj.action?.();document.getElementById('label').style.opacity='0';}
+    return;
+  }
+  const dH=ray.intersectObjects(doorList.map(d=>d.mesh));
+  if(dH.length){
+    const door=doorList.find(d=>d.mesh===dH[0].object);
+    if(!door) return;
+    if(door.to==='exit'){
+      if(inventory.includes('key')) endGame();
+      else showMsg('Il faut la clé rouillée…');
+    } else if(door.req&&!inventory.includes(door.req)){
+      showMsg(`Bloqué — ${door.label}`);
+    } else {
+      const r=ROOMS[door.to];
+      camera.position.set(r.x,1.7,r.z);
+      damageSanity(5);
+      currentRoomName=r.name;
+      document.getElementById('roomname').textContent=r.name;
+      playCreak();
+    }
+  }
+}
+
+function endGame(){
+  gameStarted=false;
+  try{localStorage.removeItem(SAVE_KEY);}catch(e){}
+  const endings=[
+    {min:70,title:'LIBERTÉ',col:'#4a9',desc:'Vous franchissez la porte avec lucidité. L\'air frais efface presque tout.'},
+    {min:40,title:'TRAUMATISÉ',col:'#aa6',desc:'Vous êtes sorti, mais quelque chose est resté derrière — une ombre.'},
+    {min:10,title:'BRISÉ',col:'#a64',desc:'La porte s\'ouvre. Votre regard est vide, définitivement.'},
+    {min:0, title:'CONSUMÉ',col:'#a44',desc:'Une forme qui vous ressemble sort. La maison a tout gardé.'},
+  ];
+  const e=endings.find(en=>sanity>=en.min)||endings[endings.length-1];
+  document.getElementById('endscreen').style.display='flex';
+  document.getElementById('end-title').textContent=e.title;
+  document.getElementById('end-title').style.color=e.col;
+  document.getElementById('end-desc').textContent=e.desc;
+}
+
+function loseGame(){
+  gameStarted=false;
+  try{localStorage.removeItem(SAVE_KEY);}catch(e){}
+  document.getElementById('end-title').textContent='LA MAISON VOUS GARDE';
+  document.getElementById('end-title').style.color='#a44';
+  document.getElementById('end-desc').textContent='Votre esprit cède. Les couloirs se referment et la maison vous garde pour toujours.';
+  document.getElementById('endscreen').style.display='flex';
+}
+
+let stepTimer=0;
+function loop(){
+  requestAnimationFrame(loop);
+  if(!gameStarted) return;
+  const dt=Math.min(clock.getDelta(),0.05);
+
+  const spd=3;
+  const fw=new THREE.Vector3(-Math.sin(yaw),0,-Math.cos(yaw));
+  const rt=new THREE.Vector3(Math.cos(yaw),0,-Math.sin(yaw));
+  const mv=new THREE.Vector3();
+  const forward=(keys['KeyW']||keys['ArrowUp']||keys['KeyZ']?1:0)-(keys['KeyS']||keys['ArrowDown']?1:0)-(Math.abs(touchMoveY)>0.08?touchMoveY:0);
+  const sideways=(keys['KeyD']||keys['ArrowRight']?1:0)-(keys['KeyA']||keys['ArrowLeft']||keys['KeyQ']?1:0)+(Math.abs(touchMoveX)>0.08?touchMoveX:0);
+  if(forward)mv.addScaledVector(fw,forward);
+  if(sideways)mv.addScaledVector(rt,sideways);
+  const moving=mv.lengthSq()>0.0001;
+  if(mv.lengthSq()>0) mv.normalize().multiplyScalar(spd*dt);
+  camera.position.add(mv);
+  camera.position.y=1.7;
+  camera.position.clamp(new THREE.Vector3(-35,1.7,-10),new THREE.Vector3(35,1.7,42));
+
+  // Footsteps
+  if(moving){ stepTimer+=dt; if(stepTimer>0.42){stepTimer=0;playStep();} }
+
+  // Bob when walking
+  if(moving) camera.position.y=1.7+Math.sin(Date.now()*0.008)*0.03;
+
+  // Lamp
+  if(lampOn){
+    lampPower=Math.max(0,lampPower-dt*1.3);
+    if(lampPower<=0){lampOn=false;lampLight.intensity=0;showMsg('La lampe est vide !');}
+    lampLight.intensity=2.2+Math.sin(Date.now()*0.009)*0.6+(Math.random()<0.03?-1.5:0);
+  }
+  document.getElementById('lamp-bar').style.width=lampPower+'%';
+
+  // Sanity
+  sanity=Math.max(0,sanity-(lampOn?0.4:2.8)*dt);
+  updateSanity();
+  if(heartGain) heartGain.gain.value=Math.max(0,(100-sanity)/100)*0.6;
+  if(sanity<=0){loseGame();return;}
+
+  saveTimer+=dt;
+  if(saveTimer>=5){saveTimer=0;saveGame();}
+
+  // Particles
+  const pp=particles.geometry.attributes.position.array;
+  for(let i=1;i<pp.length;i+=3) pp[i]+=Math.sin(Date.now()*0.001+i)*0.0005;
+  particles.geometry.attributes.position.needsUpdate=true;
+
+  // Label
+  labelTimer+=dt;
+  if(labelTimer>0.25){
+    labelTimer=0;
+    const d2=new THREE.Vector3(); camera.getWorldDirection(d2);
+    const r2=new THREE.Raycaster(camera.position,d2,0,2.6);
+    const iH=r2.intersectObjects(interactables.filter(o=>!o.used).map(o=>o.mesh));
+    const dH=r2.intersectObjects(doorList.map(d=>d.mesh));
+    const lbl=document.getElementById('label');
+    if(iH.length){const o=interactables.find(x=>{let hit=iH[0].object;while(hit&&hit!==x.mesh)hit=hit.parent;return hit===x.mesh&&!x.used;});if(o){lbl.textContent=o.label;lbl.style.opacity='1';}}
+    else if(dH.length){const d=doorList.find(x=>x.mesh===dH[0].object);if(d){lbl.textContent=d.label;lbl.style.opacity='1';}}
+    else lbl.style.opacity='0';
+  }
+
+  drawMinimap();
+  renderer.render(scene,camera);
+}
+
+function drawMinimap(){
+  const mc=document.getElementById('minimap'),mct=mc.getContext('2d');
+  mc.width=110;mc.height=90;
+  mct.fillStyle='rgba(0,0,0,.65)';mct.fillRect(0,0,110,90);
+  const sc=2.2,ox=55,oz=35;
+  mct.strokeStyle='#333';mct.lineWidth=1;
+  for(const r of Object.values(ROOMS)){
+    mct.strokeRect(ox+(r.x-r.w/2)*sc,oz+(r.z-r.d/2)*sc,r.w*sc,r.d*sc);
+  }
+  mct.fillStyle='#c00';
+  mct.beginPath();mct.arc(ox+camera.position.x*sc,oz+camera.position.z*sc,3,0,Math.PI*2);mct.fill();
+  mct.strokeStyle='#f55';mct.lineWidth=1.5;
+  mct.beginPath();
+  mct.moveTo(ox+camera.position.x*sc,oz+camera.position.z*sc);
+  mct.lineTo(ox+camera.position.x*sc+Math.sin(-yaw)*10,oz+camera.position.z*sc-Math.cos(yaw)*10);
+  mct.stroke();
+}
+
+let installPrompt=null;
+const installButton=document.getElementById('install-btn');
+window.addEventListener('beforeinstallprompt',e=>{
+  e.preventDefault();installPrompt=e;installButton.style.display='block';
+});
+installButton.addEventListener('click',async()=>{
+  if(!installPrompt)return;
+  installPrompt.prompt();
+  await installPrompt.userChoice;
+  installPrompt=null;installButton.style.display='none';
+});
+try{
+  if(localStorage.getItem(SAVE_KEY))document.getElementById('continue-btn').style.display='block';
+}catch(e){}
+window.addEventListener('pagehide',saveGame);
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden){saveGame();keys={};touchMoveX=0;touchMoveY=0;}
+});
+if('serviceWorker' in navigator){
+  window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));
+}
+</script>
+</body>
+</html>
